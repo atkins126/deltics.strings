@@ -30,6 +30,24 @@ interface
       // Miscellaneous functions
       class function Append(const aString: Utf8String; const aChar: Utf8Char): Utf8String; overload;
       class function Append(const aString: Utf8String; const aValue: Utf8String): Utf8String; overload;
+      class function BeginsWith(const aString: Utf8String; aChar: AsciiChar; aCaseMode: TCaseSensitivity = csCaseSensitive): Boolean; overload;
+      class function BeginsWith(const aString: Utf8String; aChar: WideChar; aCaseMode: TCaseSensitivity = csCaseSensitive): Boolean; overload;
+      class function BeginsWith(const aString, aSubstring: Utf8String; aCaseMode: TCaseSensitivity = csCaseSensitive): Boolean; overload;
+      class function BeginsWithText(const aString: Utf8String; aChar: AsciiChar): Boolean; overload;
+      class function BeginsWithText(const aString: Utf8String; aChar: WideChar): Boolean; overload;
+      class function BeginsWithText(const aString, aSubstring: Utf8String): Boolean; overload;
+
+      class function Compare(const A, B: Utf8String; const aCaseMode: TCaseSensitivity = csCaseSensitive): TCompareResult;
+      class function CompareText(const A, B: Utf8String): TCompareResult;
+      class procedure DeleteLeft(var aString: Utf8String; aCount: Integer); overload;
+      class function Find(const aString: Utf8String; const aChar: Utf8Char; var aPos: Integer): Boolean; overload;
+      class function FindAll(const aString: Utf8String; aChar: Utf8Char; var aPos: CharIndexArray; aCaseMode: TCaseSensitivity = csCaseSensitive): Integer; overload;
+      class function IsEmpty(const aString: Utf8String): Boolean; overload;
+      class function IsEmpty(const aString: Utf8String; var aLength: Integer): Boolean; overload;
+      class function IsNotEmpty(const aString: Utf8String): Boolean; overload;
+      class function IsNotEmpty(const aString: Utf8String; var aLength: Integer): Boolean; overload;
+      class function Split(const aString: Utf8String; const aChar: Utf8Char; var aLeft, aRight: Utf8String): Boolean; overload;
+      class function Split(const aString: Utf8String; const aChar: Utf8Char; var aParts: Utf8StringArray): Boolean; overload;
       class function StringOf(const aChar: Utf8Char; const aLength: Integer): Utf8String;
     end;
 
@@ -42,8 +60,9 @@ implementation
   {$endif}
     SysUtils,
     Windows,
-    Deltics.Strings,
-    Deltics.Pointers;
+    Deltics.Contracts,
+    Deltics.Memory,
+    Deltics.Strings;
 
 
 { _Utf8 ------------------------------------------------------------------------------------------ }
@@ -107,6 +126,36 @@ implementation
 
 
   { - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - }
+  class function Utf8Fn.IsNotEmpty(const aString: Utf8String): Boolean;
+  begin
+    result := Length(aString) > 0;
+  end;
+
+
+  { - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - }
+  class function Utf8Fn.IsEmpty(const aString: Utf8String): Boolean;
+  begin
+    result := Length(aString) = 0;
+  end;
+
+
+  { - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - }
+  class function Utf8Fn.IsEmpty(const aString: Utf8String; var aLength: Integer): Boolean;
+  begin
+    aLength := Length(aString);
+    result  := aLength = 0;
+  end;
+
+
+  { - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - }
+  class function Utf8Fn.IsNotEmpty(const aString: Utf8String; var aLength: Integer): Boolean;
+  begin
+    aLength := Length(aString);
+    result  := aLength > 0;
+  end;
+
+
+  { - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - }
   class function Utf8Fn.Alloc(const aString: Utf8String): PUtf8Char;
   var
     len: Integer;
@@ -157,6 +206,300 @@ implementation
 
 
   { - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - }
+  class function Utf8Fn.BeginsWith(const aString: Utf8String;
+                                         aChar: WideChar;
+                                         aCaseMode: TCaseSensitivity): Boolean;
+  var
+    asWide: UnicodeString;
+  begin
+    Contract.Requires('aChar', aChar).IsNotNull;
+
+    result := Length(aString) > 0;
+    if NOT result then
+      EXIT;
+
+    asWide := Wide.FromUtf8(aString);
+
+    case aCaseMode of
+      csCaseSensitive : result := (asWide[1] = aChar);
+      csIgnoreCase    : result := Wide.BeginsWithText(asWide, aChar);
+    end;
+  end;
+
+
+  { - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - }
+  class function Utf8Fn.BeginsWith(const aString, aSubstring: Utf8String;
+                                         aCaseMode: TCaseSensitivity): Boolean;
+  var
+    asWide: UnicodeString;
+    sub: UnicodeString;
+  begin
+    Contract.Requires('aSubstring', aSubstring).IsNotEmpty;
+
+    result := Length(aString) > 0;
+    if NOT result then
+      EXIT;
+
+    case aCaseMode of
+      csCaseSensitive : result := (Length(aSubString) <= Length(aString))
+                              and CompareMem(Pointer(aString), Pointer(aSubString), Length(aSubstring));
+                              
+      csIgnoreCase    : begin
+                          asWide  := Wide.FromUtf8(aString);
+                          sub     := Wide.FromUtf8(aSubstring);
+
+                          result  := (Length(sub) <= Length(asWide))
+                                 and Wide.BeginsWithText(asWide, sub);
+                        end;
+    end;
+  end;
+
+
+  { - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - }
+  class function Utf8Fn.BeginsWith(const aString: Utf8String;
+                                         aChar: AsciiChar;
+                                         aCaseMode: TCaseSensitivity): Boolean;
+  begin
+    Contract.RequiresUtf8('aChar', aChar).IsNotNull;
+    Contract.RequiresUtf8('aChar', aChar).IsAscii;
+
+    result := Length(aString) > 0;
+    if NOT result then
+      EXIT;
+
+    case aCaseMode of
+      csCaseSensitive : result := aString[1] = aChar;
+      csIgnoreCase    : result := BeginsWithText(aString, aChar);
+    end;
+  end;
+
+
+  { - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - }
+  class function Utf8Fn.BeginsWithText(const aString: Utf8String; aChar: WideChar): Boolean;
+  var
+    asWide: UnicodeString;
+  begin
+    Contract.Requires('aChar', aChar).IsNotNull;
+
+    result := Length(aString) > 0;
+    if NOT result then
+      EXIT;
+
+    asWide := Wide.FromUtf8(aString);
+    result := Wide.BeginsWithText(asWide, aChar);
+  end;
+
+
+  { - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - }
+  class function Utf8Fn.BeginsWithText(const aString, aSubstring: Utf8String): Boolean;
+  var
+    asWide: UnicodeString;
+    sub: UnicodeString;
+  begin
+    Contract.Requires('aSubstring', aSubstring).IsNotEmpty;
+
+    result := Length(aString) > 0;
+    if NOT result then
+      EXIT;
+
+    asWide  := Wide.FromUtf8(aString);
+    sub     := Wide.FromUtf8(aSubstring);
+
+    result  := (Length(sub) <= Length(asWide))
+           and Wide.BeginsWithText(asWide, sub);
+  end;
+
+
+  { - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - }
+  class function Utf8Fn.BeginsWithText(const aString: Utf8String; aChar: AsciiChar): Boolean;
+  begin
+    Contract.RequiresUtf8('aChar', aChar).IsNotNull;
+    Contract.RequiresUtf8('aChar', aChar).IsAscii;
+
+    result := Length(aString) > 0;
+    if NOT result then
+      EXIT;
+
+    case aChar of
+      #65..#90,
+      #97..#122 : result := (Byte(aString[1]) xor 32) = (Byte(aChar) xor 32);
+    else
+      result := aString[1] = aChar;
+    end;
+  end;
+
+
+  { - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - }
+  class procedure Utf8Fn.DeleteLeft(var aString: Utf8String;
+                                        aCount: Integer);
+  var
+    copyChars: Integer;
+    firstChar: Integer;
+  begin
+    Contract.Requires('aCount', aCount).IsPositiveOrZero;
+
+    if (aCount = 0) or IsEmpty(aString, copyChars) then
+      EXIT;
+
+    Dec(copyChars, aCount);
+    firstChar := aCount + 1;
+
+    if copyChars > 0 then
+      Utils.CopyUtf8Chars(aString, firstChar, 1, copyChars)
+    else
+      copyChars := 0;
+
+    SetLength(aString, copyChars);
+  end;
+
+
+  { - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - }
+  class function Utf8Fn.Find(const aString: Utf8String;
+                             const aChar: utf8Char;
+                             var   aPos: Integer): Boolean;
+  begin
+    aPos    := Pos(aChar, aString);
+    result  := aPos > 0;
+  end;
+
+
+  class function Utf8Fn.FindAll(const aString: Utf8String;
+                                      aChar: Utf8Char;
+                                var   aPos: CharIndexArray;
+                                      aCaseMode: TCaseSensitivity): Integer;
+  var
+    i: Integer;
+    len: Integer;
+    firstChar: PUtf8Char;
+    currChar: PUtf8Char;
+    isAlpha: Boolean;
+  begin
+    Contract.Requires('aChar', aChar).IsNotNull;
+
+    result := 0;
+    SetLength(aPos, 0);
+
+    isAlpha := AnsiChar(aChar) in ['A'..'Z', 'a'..'z'];
+
+    len  := System.Length(aString);
+
+    if (len = 0) then
+      EXIT;
+
+    SetLength(aPos, len);
+    firstChar := PUtf8Char(aString);
+    currChar  := firstChar;
+
+    if (aCaseMode = csCaseSensitive) or NOT isAlpha then
+    begin
+      for i := Pred(len) downto 0 do
+      begin
+        if (currChar^ = aChar) then
+        begin
+          aPos[result] := (IntPointer(currChar) - IntPointer(firstChar)) + 1;
+          Inc(result);
+        end;
+
+        Inc(currChar);
+      end;
+    end
+    else
+    begin
+      // csIgnoreCase and char is alpha
+
+      for i := Pred(len) downto 0 do
+      begin
+        if (currChar^ = aChar) or (Ord(currChar^) = Ord(aChar) xor 32) then
+        begin
+          aPos[result] := (IntPointer(currChar) - IntPointer(firstChar)) + 1;
+          Inc(result);
+        end;
+
+        Inc(currChar);
+      end;
+    end;
+
+    SetLength(aPos, result);
+  end;
+
+
+  { - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - }
+  class function Utf8Fn.Split(const aString: Utf8String;
+                              const aChar: Utf8Char;
+                              var aLeft: Utf8String;
+                              var aRight: Utf8String): Boolean;
+  var
+    p: Integer;
+  begin
+    aLeft   := aString;
+    aRight  := '';
+
+    result  := Find(aString, aChar, p);
+    if NOT result then
+      EXIT;
+
+    SetLength(aLeft, p - 1);
+    aRight := System.Copy(aString, p + 1, System.Length(aString) - p);
+  end;
+
+
+//  { - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - }
+//  class function Utf8Fn.Split(const aString: Utf8String;
+//                              const aDelim: Utf8String;
+//                              var aLeft: Utf8String;
+//                              var aRight: Utf8String): Boolean;
+//  var
+//    p, delimLen: Integer;
+//  begin
+//    Contract.Requires('aDelim', aDelim).IsNotEmpty.GetLength(delimLen);
+//
+//    aLeft   := aString;
+//    aRight  := '';
+//
+//    result  := Find(aString, aDelim, p);
+//    if NOT result then
+//      EXIT;
+//
+//    SetLength(aLeft, p - 1);
+//    aRight := System.Copy(aString, p + delimLen, System.Length(aString) - (p + delimLen - 1));
+//  end;
+
+
+
+  { - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - }
+  class function Utf8Fn.Split(const aString: Utf8String;
+                              const aChar: Utf8Char;
+                              var   aParts: Utf8StringArray): Boolean;
+  var
+    i: Integer;
+    p: CharIndexArray;
+    plen: Integer;
+  begin
+    result := FindAll(aString, aChar, p) > 0;
+    if NOT result then
+    begin
+      if aString <> '' then
+      begin
+        SetLength(aParts, 1);
+        aParts[0] := aString;
+      end;
+
+      EXIT;
+    end;
+
+    plen := System.Length(p);
+    SetLength(aParts, plen + 1);
+
+    aParts[0] := Copy(aString, 1, p[0] - 1);
+    for i := 1 to Pred(plen) do
+      aParts[i] := Copy(aString, p[i - 1] + 1, p[i] - p[i - 1] - 1);
+
+    i := p[Pred(plen)] + 1;
+    aParts[plen] := Copy(aString, i, System.Length(aString) - i + 1)
+  end;
+
+
+  { - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - }
   class function Utf8Fn.StringOf(const aChar: Utf8Char;
                                  const aLength: Integer): Utf8String;
   var
@@ -165,6 +508,33 @@ implementation
     SetLength(result, aLength);
     for i := 1 to aLength do
       result[i] := aChar;
+  end;
+
+
+  { - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - }
+  class function Utf8Fn.Compare(const A, B: Utf8String;
+                                const aCaseMode: TCaseSensitivity): TCompareResult;
+  var
+    wideA: UnicodeString;
+    wideB: UnicodeString;
+  begin
+    wideA := Wide.FromUtf8(A);
+    wideB := Wide.FromUtf8(B);
+
+    result := Wide.Compare(wideA, wideB, aCaseMode);
+  end;
+
+
+  { - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - }
+  class function Utf8Fn.CompareText(const A, B: Utf8String): TCompareResult;
+  var
+    wideA: UnicodeString;
+    wideB: UnicodeString;
+  begin
+    wideA := Wide.FromUtf8(A);
+    wideB := Wide.FromUtf8(B);
+
+    result := Wide.CompareText(wideA, wideB);
   end;
 
 
@@ -181,7 +551,7 @@ implementation
     if (aMaxBytes < len) then
       len := aMaxBytes;
 
-    CopyMemory(Memory.ByteOffset(aBuffer, aOffset), PUtf8Char(aString), len);
+    CopyMemory(Memory.Offset(aBuffer, aOffset), PUtf8Char(aString), len);
   end;
 
 
